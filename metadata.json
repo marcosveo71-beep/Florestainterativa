@@ -1,5 +1,5 @@
 {
-  "name": "",
-  "description": "",
+  "name": "Floresta 3D Interativa",
+  "description": "Uma floresta 3D interativa com ciclo de estações do ano, chuva e controles de movimento.",
   "requestFramePermissions": []
 }
