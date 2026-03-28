@@ -1,22 +1,29 @@
+import React, { useEffect, useRef, useState } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
-import { useEffect, useRef } from 'react';
 import * as THREE from 'three';
-import { controlsState } from './store';
+import { useGLTF, useAnimations } from '@react-three/drei';
+import { controlsState, treeColliders } from './store';
 
 export function Player() {
   const { camera } = useThree();
-  // Start the player a bit further back so they can see the lake in front of them
-  const position = useRef(new THREE.Vector3(0, 2, 25));
   
-  // Target rotations for fluid interpolation
-  const targetRotY = useRef(0);
-  const targetRotX = useRef(0);
+  const group = useRef<THREE.Group>(null);
+  const position = useRef(new THREE.Vector3(0, 0, 25));
   
-  // Current actual rotations
-  const currentRotY = useRef(0);
-  const currentRotX = useRef(0);
+  // Carrega o modelo 3D e suas animações da internet (Robot Expressive)
+  const { scene, animations } = useGLTF('https://raw.githubusercontent.com/mrdoob/three.js/master/examples/models/gltf/RobotExpressive/RobotExpressive.glb');
+  const { actions } = useAnimations(animations, group);
   
-  const bobbingTime = useRef(0);
+  // Camera orbit angles
+  const cameraAzimuth = useRef(0); // Horizontal angle
+  const cameraElevation = useRef(0.2); // Vertical angle
+  const cameraRadius = 6; // Distance from player
+  
+  // Player rotation (facing direction)
+  const targetPlayerRotation = useRef(0);
+  const currentPlayerRotation = useRef(0);
+  
+  const [currentAction, setCurrentAction] = useState('Idle');
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -40,61 +47,131 @@ export function Player() {
     };
   }, []);
 
+  // Transição suave entre as animações (Idle <-> Walking)
+  useEffect(() => {
+    if (actions && actions[currentAction]) {
+      const action = actions[currentAction];
+      action.reset().fadeIn(0.2).play();
+      return () => {
+        action.fadeOut(0.2);
+      };
+    }
+  }, [currentAction, actions]);
+
+  // Habilita sombras no modelo
+  useEffect(() => {
+    scene.traverse((child) => {
+      if ((child as THREE.Mesh).isMesh) {
+        child.castShadow = true;
+        child.receiveShadow = true;
+      }
+    });
+  }, [scene]);
+
   useFrame((state, delta) => {
-    // Increased speeds for more sensitivity
-    const speed = 18 * delta; 
-    const turnSpeed = 3.5 * delta; 
+    if (!group.current) return;
 
-    if (controlsState.turnLeft) targetRotY.current += turnSpeed;
-    if (controlsState.turnRight) targetRotY.current -= turnSpeed;
-
-    // Apply touch look deltas with higher sensitivity
-    targetRotY.current -= controlsState.lookDeltaX * 0.012;
-    targetRotX.current -= controlsState.lookDeltaY * 0.012;
+    // 1. Update Camera Orbit Angles from input
+    cameraAzimuth.current -= controlsState.lookDeltaX * 0.01;
+    cameraElevation.current -= controlsState.lookDeltaY * 0.01;
     
-    // Reset deltas after applying
+    // Clamp elevation to prevent going under the ground or too far over the head
+    cameraElevation.current = Math.max(-0.1, Math.min(Math.PI / 2.5, cameraElevation.current));
+    
     controlsState.lookDeltaX = 0;
     controlsState.lookDeltaY = 0;
 
-    // Clamp vertical rotation (pitch)
-    targetRotX.current = Math.max(-Math.PI / 2.5, Math.min(Math.PI / 2.5, targetRotX.current));
-
-    // Smooth interpolation for fluidity
-    const lerpFactor = Math.min(20 * delta, 1);
-    currentRotY.current += (targetRotY.current - currentRotY.current) * lerpFactor;
-    currentRotX.current += (targetRotX.current - currentRotX.current) * lerpFactor;
-
-    const direction = new THREE.Vector3(0, 0, -1).applyAxisAngle(new THREE.Vector3(0, 1, 0), currentRotY.current);
+    // 2. Calculate Movement relative to camera
+    const speed = 8 * delta; // Ajustado para combinar com a animação de caminhada
+    const moveDir = new THREE.Vector3(0, 0, 0);
     
-    let isMoving = false;
-    if (controlsState.forward) {
-      position.current.addScaledVector(direction, speed);
-      isMoving = true;
-    }
-    if (controlsState.backward) {
-      position.current.addScaledVector(direction, -speed);
-      isMoving = true;
-    }
+    if (controlsState.forward) moveDir.z -= 1;
+    if (controlsState.backward) moveDir.z += 1;
+    if (controlsState.turnLeft) moveDir.x -= 1;
+    if (controlsState.turnRight) moveDir.x += 1;
 
-    // Keep player within bounds
-    position.current.x = Math.max(-150, Math.min(150, position.current.x));
-    position.current.z = Math.max(-150, Math.min(150, position.current.z));
+    let isMoving = moveDir.lengthSq() > 0;
 
     if (isMoving) {
-      bobbingTime.current += delta * 12; // Faster bobbing to match faster walk
-    } else {
-      bobbingTime.current += (0 - bobbingTime.current) * delta * 5;
-    }
-    
-    const bobbingOffset = Math.sin(bobbingTime.current) * 0.15;
+      moveDir.normalize();
+      // Rotate movement vector by camera's azimuth so "forward" is always where the camera is looking
+      moveDir.applyAxisAngle(new THREE.Vector3(0, 1, 0), cameraAzimuth.current);
+      
+      let nextX = position.current.x + moveDir.x * speed;
+      let nextZ = position.current.z + moveDir.z * speed;
 
-    camera.position.copy(position.current);
-    camera.position.y += bobbingOffset;
+      // Tree collision detection and resolution
+      const playerRadius = 0.5;
+      for (const tree of treeColliders) {
+        const dx = nextX - tree.x;
+        const dz = nextZ - tree.z;
+        const distSq = dx * dx + dz * dz;
+        const minDistance = playerRadius + tree.radius;
+        
+        if (distSq < minDistance * minDistance) {
+          // Resolve collision by pushing player out of the tree radius
+          const dist = Math.sqrt(distSq);
+          const overlap = minDistance - dist;
+          // Avoid division by zero
+          if (dist > 0.001) {
+            nextX += (dx / dist) * overlap;
+            nextZ += (dz / dist) * overlap;
+          }
+        }
+      }
+
+      position.current.x = nextX;
+      position.current.z = nextZ;
+      
+      // Calculate target rotation for the dummy to face the movement direction
+      targetPlayerRotation.current = Math.atan2(moveDir.x, moveDir.z);
+      
+      if (currentAction !== 'Walking') setCurrentAction('Walking');
+    } else {
+      if (currentAction !== 'Idle') setCurrentAction('Idle');
+    }
+
+    // Keep within bounds
+    position.current.x = Math.max(-145, Math.min(145, position.current.x));
+    position.current.z = Math.max(-145, Math.min(145, position.current.z));
+
+    // 3. Update Dummy Position and Rotation
+    group.current.position.copy(position.current);
     
-    camera.rotation.order = 'YXZ';
-    camera.rotation.y = currentRotY.current;
-    camera.rotation.x = currentRotX.current;
+    // Smoothly rotate player
+    let diff = targetPlayerRotation.current - currentPlayerRotation.current;
+    // Normalize angle difference to -PI to PI for shortest rotation path
+    while (diff < -Math.PI) diff += Math.PI * 2;
+    while (diff > Math.PI) diff -= Math.PI * 2;
+    currentPlayerRotation.current += diff * Math.min(15 * delta, 1);
+    
+    group.current.rotation.y = currentPlayerRotation.current;
+
+    // 4. Update Camera Position (Orbit)
+    const idealCameraPos = new THREE.Vector3(
+      position.current.x + cameraRadius * Math.sin(cameraAzimuth.current) * Math.cos(cameraElevation.current),
+      position.current.y + 1.5 + cameraRadius * Math.sin(cameraElevation.current),
+      position.current.z + cameraRadius * Math.cos(cameraAzimuth.current) * Math.cos(cameraElevation.current)
+    );
+
+    // Smoothly move camera to ideal position
+    camera.position.lerp(idealCameraPos, Math.min(15 * delta, 1));
+    
+    // Look at player's head/upper body
+    const lookAtTarget = new THREE.Vector3(
+      position.current.x,
+      position.current.y + 1.2,
+      position.current.z
+    );
+    camera.lookAt(lookAtTarget);
   });
 
-  return null;
+  return (
+    <group ref={group} dispose={null}>
+      <primitive object={scene} scale={0.4} position={[0, 0, 0]} />
+    </group>
+  );
 }
+
+// Preload the model so it's ready instantly
+useGLTF.preload('https://raw.githubusercontent.com/mrdoob/three.js/master/examples/models/gltf/RobotExpressive/RobotExpressive.glb');

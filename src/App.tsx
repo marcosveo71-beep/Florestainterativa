@@ -14,6 +14,9 @@ import { Grass } from './components/Grass';
 import { Lake } from './components/Lake';
 import { Mushrooms } from './components/Mushrooms';
 import { Rain } from './components/Rain';
+import { Snow } from './components/Snow';
+import { FallingLeaves } from './components/FallingLeaves';
+import { SnowAccumulation } from './components/SnowAccumulation';
 
 function Loader() {
   const { progress } = useProgress();
@@ -130,11 +133,14 @@ export default function App() {
           <Grass color={season.grassColor} />
           <Lake />
           <Mushrooms visible={seasonKey === 'autumn'} />
-          <Rain visible={isRaining} />
+          <Rain visible={isRaining && seasonKey !== 'winter'} />
+          <Snow visible={isRaining && seasonKey === 'winter'} />
+          <FallingLeaves visible={seasonKey === 'autumn'} />
+          <SnowAccumulation isWinter={seasonKey === 'winter'} />
+          <Player />
         </Suspense>
         
         <Ground color={season.groundColor} />
-        <Player />
       </Canvas>
       
       <MobileControls />
@@ -165,7 +171,7 @@ export default function App() {
               : 'bg-black/40 text-white/80 border-white/20 hover:bg-black/60'
           }`}
         >
-          {isRaining ? '🌧️ Com Chuva' : '☀️ Sem Chuva'}
+          {isRaining ? (seasonKey === 'winter' ? '❄️ Nevando' : '🌧️ Com Chuva') : '☀️ Céu Limpo'}
         </button>
       </div>
     </div>
