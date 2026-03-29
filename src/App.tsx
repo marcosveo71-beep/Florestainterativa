@@ -86,6 +86,13 @@ export default function App() {
   const [seasonIndex, setSeasonIndex] = useState(1); // Start at summer
   const [timeLeft, setTimeLeft] = useState(100);
   const [isRaining, setIsRaining] = useState(true);
+  const [playerCount, setPlayerCount] = useState(1);
+
+  useEffect(() => {
+    const handlePlayerCount = (e: any) => setPlayerCount(e.detail);
+    window.addEventListener('playerCountChange', handlePlayerCount);
+    return () => window.removeEventListener('playerCountChange', handlePlayerCount);
+  }, []);
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -150,7 +157,8 @@ export default function App() {
       <div className="absolute top-4 left-4 text-white/80 text-sm pointer-events-none drop-shadow-md z-10">
         Arraste o dedo na tela para olhar ao redor.<br/>
         Use os botões ou WASD/Setas para andar.<br/>
-        <span className="text-green-400 font-bold">Multiplayer Online Ativado!</span>
+        <span className="text-green-400 font-bold">Multiplayer Online Ativado!</span><br/>
+        <span className="text-blue-300 font-semibold">Jogadores na sala: {playerCount}/3</span>
       </div>
 
       <div className="absolute top-4 right-4 flex flex-col items-end gap-2 z-10">

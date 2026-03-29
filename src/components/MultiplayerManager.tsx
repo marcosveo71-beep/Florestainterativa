@@ -10,6 +10,8 @@ export function MultiplayerManager() {
   const [isServerFull, setIsServerFull] = useState(false);
 
   useEffect(() => {
+    socket.connect();
+
     socket.on('serverFull', () => {
       setIsServerFull(true);
       socket.disconnect();
@@ -66,8 +68,14 @@ export function MultiplayerManager() {
       socket.off('newPlayer');
       socket.off('playerDisconnected');
       socket.off('playerMoved');
+      socket.disconnect();
     };
   }, []);
+
+  useEffect(() => {
+    const count = Object.keys(players).length + 1;
+    window.dispatchEvent(new CustomEvent('playerCountChange', { detail: count }));
+  }, [players]);
 
   return (
     <group>
