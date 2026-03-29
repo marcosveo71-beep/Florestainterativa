@@ -17,6 +17,7 @@ import { Rain } from './components/Rain';
 import { Snow } from './components/Snow';
 import { FallingLeaves } from './components/FallingLeaves';
 import { SnowAccumulation } from './components/SnowAccumulation';
+import { MultiplayerManager } from './components/MultiplayerManager';
 
 function Loader() {
   const { progress } = useProgress();
@@ -138,6 +139,7 @@ export default function App() {
           <FallingLeaves visible={seasonKey === 'autumn'} />
           <SnowAccumulation isWinter={seasonKey === 'winter'} />
           <Player />
+          <MultiplayerManager />
         </Suspense>
         
         <Ground color={season.groundColor} />
@@ -147,7 +149,8 @@ export default function App() {
       
       <div className="absolute top-4 left-4 text-white/80 text-sm pointer-events-none drop-shadow-md z-10">
         Arraste o dedo na tela para olhar ao redor.<br/>
-        Use os botões ou WASD/Setas para andar.
+        Use os botões ou WASD/Setas para andar.<br/>
+        <span className="text-green-400 font-bold">Multiplayer Online Ativado!</span>
       </div>
 
       <div className="absolute top-4 right-4 flex flex-col items-end gap-2 z-10">

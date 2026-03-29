@@ -2,7 +2,9 @@ import React, { useEffect, useRef, useState } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useGLTF, useAnimations } from '@react-three/drei';
+import { SkeletonUtils } from 'three-stdlib';
 import { controlsState, treeColliders } from './store';
+import { socket } from '../socket';
 
 export function Player() {
   const { camera } = useThree();
@@ -24,6 +26,24 @@ export function Player() {
   const currentPlayerRotation = useRef(0);
   
   const [currentAction, setCurrentAction] = useState('Idle');
+  const [playerColor, setPlayerColor] = useState('#ffffff');
+  
+  // Network sync timer
+  const lastSyncTime = useRef(0);
+
+  useEffect(() => {
+    const onCurrentPlayers = (currentPlayers: any) => {
+      if (currentPlayers[socket.id!]) {
+        setPlayerColor(currentPlayers[socket.id!].color);
+      }
+    };
+    
+    socket.on('currentPlayers', onCurrentPlayers);
+    
+    return () => {
+      socket.off('currentPlayers', onCurrentPlayers);
+    };
+  }, []);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -58,15 +78,36 @@ export function Player() {
     }
   }, [currentAction, actions]);
 
-  // Habilita sombras no modelo
-  useEffect(() => {
-    scene.traverse((child) => {
+  // Habilita sombras no modelo e aplica a cor
+  const clone = React.useMemo(() => {
+    const cloned = SkeletonUtils.clone(scene);
+    
+    cloned.traverse((child) => {
       if ((child as THREE.Mesh).isMesh) {
+        const mesh = child as THREE.Mesh;
         child.castShadow = true;
         child.receiveShadow = true;
+        
+        if (mesh.material) {
+          if (Array.isArray(mesh.material)) {
+            mesh.material = mesh.material.map(m => m.clone());
+            mesh.material.forEach(m => {
+              if ((m as THREE.MeshStandardMaterial).color) {
+                (m as THREE.MeshStandardMaterial).color.set(playerColor);
+              }
+            });
+          } else {
+            mesh.material = (mesh.material as THREE.Material).clone();
+            if ((mesh.material as THREE.MeshStandardMaterial).color) {
+              (mesh.material as THREE.MeshStandardMaterial).color.set(playerColor);
+            }
+          }
+        }
       }
     });
-  }, [scene]);
+    
+    return cloned;
+  }, [scene, playerColor]);
 
   useFrame((state, delta) => {
     if (!group.current) return;
@@ -164,11 +205,24 @@ export function Player() {
       position.current.z
     );
     camera.lookAt(lookAtTarget);
+
+    // 5. Network Sync
+    const now = state.clock.getElapsedTime();
+    if (now - lastSyncTime.current > 0.05) { // Sync at 20fps
+      socket.emit('playerMovement', {
+        x: position.current.x,
+        y: position.current.y,
+        z: position.current.z,
+        rotation: currentPlayerRotation.current,
+        action: currentAction
+      });
+      lastSyncTime.current = now;
+    }
   });
 
   return (
     <group ref={group} dispose={null}>
-      <primitive object={scene} scale={0.4} position={[0, 0, 0]} />
+      <primitive object={clone} scale={0.4} position={[0, 0, 0]} />
     </group>
   );
 }

@@ -7,6 +7,12 @@ export const controlsState = {
   lookDeltaY: 0,
 };
 
+export const remotePlayersState: Record<string, any> = {};
+
+export const localPlayerState = {
+  color: '#ffffff',
+};
+
 export const treeColliders: { x: number, z: number, radius: number }[] = [];
 
 export const treeGroupsData = (() => {
